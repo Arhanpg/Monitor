@@ -1,7 +1,5 @@
 package com.example.monitor
 
-import android.Manifest
-import android.content.Context
 import android.os.Bundle
 import android.view.SurfaceView
 import android.widget.Toast
@@ -16,13 +14,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.firebase.firestore.FirebaseFirestore
 import io.agora.rtc2.Constants
@@ -30,8 +32,6 @@ import io.agora.rtc2.IRtcEngineEventHandler
 import io.agora.rtc2.RtcEngine
 import io.agora.rtc2.video.VideoCanvas
 
-// --- CONFIGURATION ---
-// PASTE YOUR AGORA APP ID HERE!
 const val AGORA_APP_ID = "40b0b12b81794659ac17a9a66fab985a"
 
 class MainActivity : ComponentActivity() {
@@ -51,23 +51,15 @@ fun MonitorAppNav() {
     var selectedChannelName by remember { mutableStateOf("") }
 
     if (currentScreen == "list") {
-        ActiveUserListScreen(
-            onUserSelected = { channelName ->
-                selectedChannelName = channelName
-                currentScreen = "video"
-            }
-        )
+        ActiveUserListScreen(onUserSelected = { channelName ->
+            selectedChannelName = channelName
+            currentScreen = "video"
+        })
     } else {
-        LiveStreamViewer(
-            channelName = selectedChannelName,
-            onBack = { currentScreen = "list" }
-        )
+        LiveStreamViewer(channelName = selectedChannelName, onBack = { currentScreen = "list" })
     }
 }
 
-// ===========================
-// SCREEN 1: LIST OF CAMERAS
-// ===========================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveUserListScreen(onUserSelected: (String) -> Unit) {
@@ -78,44 +70,26 @@ fun ActiveUserListScreen(onUserSelected: (String) -> Unit) {
         try {
             db.collection("active_cameras").addSnapshotListener { snapshot, _ ->
                 if (snapshot != null) {
-                    val list = snapshot.documents.map { doc ->
-                        mapOf(
-                            "email" to (doc.getString("email") ?: "Unknown"),
-                            "channel" to doc.id
-                        )
+                    cameras = snapshot.documents.map { doc ->
+                        mapOf("email" to (doc.getString("email") ?: "Unknown"), "channel" to doc.id)
                     }
-                    cameras = list
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Monitor Dashboard") }) }
-    ) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Monitor Dashboard") }) }) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp)) {
             Text("Active Cameras", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(16.dp))
-
-            if (cameras.isEmpty()) {
-                Text("No active cameras found...", color = Color.Gray)
-            }
-
+            if (cameras.isEmpty()) Text("No active cameras found...", color = Color.Gray)
             LazyColumn {
                 items(cameras) { cam ->
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp)
-                            .clickable { onUserSelected(cam["channel"]!!) },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable { onUserSelected(cam["channel"]!!) },
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
@@ -130,42 +104,42 @@ fun ActiveUserListScreen(onUserSelected: (String) -> Unit) {
     }
 }
 
-// ===========================
-// SCREEN 2: LIVE VIDEO VIEWER
-// ===========================
 @Composable
 fun LiveStreamViewer(channelName: String, onBack: () -> Unit) {
     val context = LocalContext.current
     var rtcEngine by remember { mutableStateOf<RtcEngine?>(null) }
+    val db = FirebaseFirestore.getInstance()
 
-    val remoteSurfaceView = remember {
-        SurfaceView(context).apply {
-            setZOrderMediaOverlay(true)
-        }
+    // IP Address State (Loaded from DB)
+    var fileServerUrl by remember { mutableStateOf("Fetching IP...") }
+
+    val remoteSurfaceView = remember { SurfaceView(context).apply { setZOrderMediaOverlay(true) } }
+
+    // 1. Listen for IP Address in Database
+    LaunchedEffect(channelName) {
+        db.collection("active_cameras").document(channelName)
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null && snapshot.exists()) {
+                    fileServerUrl = snapshot.getString("file_url") ?: "No Access"
+                }
+            }
     }
 
     DisposableEffect(channelName) {
-        try {
-            val engine = RtcEngine.create(context, AGORA_APP_ID, object : IRtcEngineEventHandler() {
-                override fun onUserJoined(uid: Int, elapsed: Int) {
-                    super.onUserJoined(uid, elapsed)
-                    (context as? ComponentActivity)?.runOnUiThread {
-                        val videoCanvas = VideoCanvas(remoteSurfaceView, VideoCanvas.RENDER_MODE_HIDDEN, uid)
-                        rtcEngine?.setupRemoteVideo(videoCanvas)
-                    }
+        val engine = RtcEngine.create(context, AGORA_APP_ID, object : IRtcEngineEventHandler() {
+            override fun onUserJoined(uid: Int, elapsed: Int) {
+                (context as? ComponentActivity)?.runOnUiThread {
+                    val videoCanvas = VideoCanvas(remoteSurfaceView, VideoCanvas.RENDER_MODE_HIDDEN, uid)
+                    rtcEngine?.setupRemoteVideo(videoCanvas)
                 }
-            })
-
-            engine.setChannelProfile(Constants.CHANNEL_PROFILE_LIVE_BROADCASTING)
-            engine.setClientRole(Constants.CLIENT_ROLE_AUDIENCE)
-            engine.enableVideo()
-            engine.joinChannel(null, channelName, null, 0)
-            rtcEngine = engine
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-        }
+            }
+        })
+        engine.setChannelProfile(Constants.CHANNEL_PROFILE_LIVE_BROADCASTING)
+        engine.setClientRole(Constants.CLIENT_ROLE_AUDIENCE)
+        engine.enableVideo()
+        engine.enableAudio()
+        engine.joinChannel(null, channelName, null, 0)
+        rtcEngine = engine
 
         onDispose {
             rtcEngine?.leaveChannel()
@@ -175,31 +149,44 @@ fun LiveStreamViewer(channelName: String, onBack: () -> Unit) {
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
-            factory = { remoteSurfaceView },
-            modifier = Modifier.fillMaxSize()
-        )
+        AndroidView(factory = { remoteSurfaceView }, modifier = Modifier.fillMaxSize())
 
+        // --- TOP BAR: SHOWS LAPTOP LINK ---
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.7f))
+                .padding(top = 40.dp, bottom = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Laptop File Link:", color = Color.LightGray, fontSize = 12.sp)
+            Text(
+                text = fileServerUrl,
+                color = Color.Green,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Back Button
         IconButton(
             onClick = onBack,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(16.dp)
-                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(50))
+            modifier = Modifier.align(Alignment.TopStart).padding(top = 40.dp, start = 16.dp)
         ) {
             Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
         }
 
-        Text(
-            text = "Monitoring: $channelName",
-            color = Color.White,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(32.dp)
-                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                .padding(8.dp)
-        )
+        // Switch Camera Button
+        IconButton(
+            onClick = {
+                db.collection("commands").document(channelName).set(mapOf("action" to "switch_camera"))
+                Toast.makeText(context, "Switching...", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 16.dp)
+        ) {
+            Icon(Icons.Default.Refresh, contentDescription = "Switch Camera", tint = Color.White)
+        }
     }
 }
 
