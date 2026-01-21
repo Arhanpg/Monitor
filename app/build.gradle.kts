@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    // FIX: The new Compose Compiler plugin (Required for Kotlin 2.0)
+    // FIX: The new Compose Compiler plugin
     id("org.jetbrains.kotlin.plugin.compose")
     // FIX: Google Services
     id("com.google.gms.google-services")
@@ -43,8 +43,6 @@ android {
     buildFeatures {
         compose = true
     }
-    // REMOVED: composeOptions block is NO LONGER NEEDED in Kotlin 2.0
-    // The new plugin handles it automatically.
 
     packaging {
         resources {
@@ -62,7 +60,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
 
-    // --- 2. FIREBASE ---
+    // --- 2. FIREBASE (Clean Setup) ---
+    // The BoM controls all versions, so they never conflict
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
