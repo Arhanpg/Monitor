@@ -1,9 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    // FIX: The new Compose Compiler plugin
     id("org.jetbrains.kotlin.plugin.compose")
-    // FIX: Google Services
     id("com.google.gms.google-services")
 }
 
@@ -27,13 +25,16 @@ android {
         }
     }
 
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+
         }
     }
     compileOptions {
@@ -46,16 +47,10 @@ android {
     buildFeatures {
         compose = true
     }
-
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
 }
 
 dependencies {
-    // --- 1. COMPOSE & UI ---
+    // --- 1. COMPOSE & UI (Unified Version 2024.02.00) ---
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation("androidx.compose.ui:ui")
@@ -63,17 +58,23 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
 
-    // --- 2. FIREBASE (Clean Setup) ---
-    // The BoM controls all versions, so they never conflict
+    // Navigation
+    implementation("androidx.navigation:navigation-compose:2.7.7")
+
+    // --- 2. FIREBASE ---
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
+    // (Optional) Play Services if you use Google Sign In, otherwise safe to keep
     implementation("com.google.android.gms:play-services-auth:20.7.0")
+    implementation ("androidx.compose.material:material-icons-extended")
+    implementation(libs.material.icons.extended)
+
 
     // --- 3. AGORA VIDEO ---
     implementation("io.agora.rtc:full-sdk:4.3.0")
 
-    // --- 4. CORE ---
+    // --- 4. CORE ANDROID ---
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
 
